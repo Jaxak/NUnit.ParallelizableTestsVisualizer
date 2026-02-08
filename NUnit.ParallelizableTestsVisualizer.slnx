@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/configs/">
+    <File Path=".gitignore" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="NUnit.ParallelizableTestsVisualizer/NUnit.ParallelizableTestsVisualizer.csproj" />
+  <Project Path="Tests/Tests.csproj" />
+</Solution>
