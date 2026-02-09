@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <title>Визуализация параллельного выполнения тестов</title>
+    <style>
+
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        h1 { color: #333; }
+        .timeline-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto; }
+        .timeline { position: relative; margin-top: 20px; min-width: max-content; margin-left: 70px; }
+        .worker-row { position: relative; height: 60px; margin-bottom: 10px; border-left: 2px solid #333; }
+        .worker-label { position: absolute; left: -60px; top: 20px; width: 50px; text-align: right; font-weight: bold; color: #666; }
+        .test-block { position: absolute; height: 40px; top: 10px; border-radius: 4px; cursor: pointer; transition: transform 0.2s; display: flex; align-items: center; padding: 0 8px; font-size: 12px; color: white; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border: 1px solid black; box-sizing: border-box; }
+        .test-block:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 10; }
+        .test-block.passed { background: #4CAF50; }
+        .test-block.failed { background: #f44336; }
+        .test-block.skipped { background: #FF9800; }
+        .test-block.inconclusive { background: #9E9E9E; }
+        .test-block.long-running { background: #FFD700; color: #333; }
+        .tooltip { position: fixed; display: none; background: #333; color: white; padding: 12px; border-radius: 4px; font-size: 14px; z-index: 1000; pointer-events: none; max-width: 400px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+        .tooltip-visible { display: block; }
+        .time-axis { height: 30px; border-bottom: 2px solid #333; position: relative; margin-bottom: 20px; margin-left: 0; }
+        .time-marker { position: absolute; font-size: 11px; color: #666; top: 5px; }
+        .stats { margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 4px; }
+        .stats-item { display: inline-block; margin-right: 30px; }
+        .stats-label { font-weight: bold; color: #1976d2; }
+        .zoom-control { margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 15px; }
+        .zoom-control label { font-weight: bold; color: #333; }
+        .zoom-slider { flex: 1; max-width: 300px; height: 6px; -webkit-appearance: none; appearance: none; background: #ddd; outline: none; border-radius: 3px; }
+        .zoom-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; background: #1976d2; cursor: pointer; border-radius: 50%; }
+        .zoom-slider::-moz-range-thumb { width: 20px; height: 20px; background: #1976d2; cursor: pointer; border-radius: 50%; border: none; }
+        .zoom-input { width: 80px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: center; }
+        .zoom-buttons { display: flex; gap: 10px; }
+        .zoom-button { padding: 6px 12px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+        .zoom-button:hover { background: #1565c0; }
+        .zoom-button:active { background: #0d47a1; }
+        .test-lists-container { margin-top: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
+        .test-list-block { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-list-block h2 { margin-top: 0; margin-bottom: 15px; font-size: 18px; color: #333; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .test-list-block.long-running h2 { border-color: #FFD700; color: #F57C00; }
+        .test-list-block.failed h2 { border-color: #f44336; color: #f44336; }
+        .test-list-block.skipped h2 { border-color: #FF9800; color: #FF9800; }
+        .test-list-block.retried h2 { border-color: #2196F3; color: #2196F3; }
+        .test-list { list-style: none; padding: 0; margin: 0; }
+        .test-list li { padding: 10px; margin-bottom: 8px; background: #f9f9f9; border-radius: 4px; border-left: 4px solid #ddd; font-size: 14px; word-break: break-word; }
+        .test-list li.long-running { border-left-color: #FFD700; background: #FFFDE7; }
+        .test-list li.failed { border-left-color: #f44336; background: #FFEBEE; }
+        .test-list li.skipped { border-left-color: #FF9800; background: #FFF3E0; }
+        .test-list li.retried { border-left-color: #2196F3; background: #E3F2FD; }
+        .test-list .test-name { font-weight: bold; color: #333; }
+        .test-list .test-duration { color: #666; font-size: 12px; margin-left: 10px; }
+        .test-list .test-worker { color: #888; font-size: 12px; margin-left: 10px; }
+        .test-list .test-retry-count { color: #2196F3; font-size: 12px; margin-left: 10px; font-weight: bold; }
+        .test-list .empty-message { color: #999; font-style: italic; text-align: center; padding: 20px; }
+    
+    </style>
+</head>
+<body>
+    <h1>Визуализация параллельного выполнения тестов<br><span style='color: #666; font-weight: normal; font-size: 0.7em;'>для ReportExampleTests</span></h1>
+    <div class='stats'>
+        <div class='stats-item'><span class='stats-label'>Всего тестов:</span> 55</div>
+        <div class='stats-item'><span class='stats-label'>Потоков:</span> 16</div>
+        <div class='stats-item'><span class='stats-label'>Общее время:</span> 17.01 сек</div>
+        <div class='stats-item'><span class='stats-label'>Начало:</span> 12:41:45.556</div>
+        <div class='stats-item'><span class='stats-label'>Окончание:</span> 12:42:02.567</div>
+    </div>
+    <div class='zoom-control'>
+        <label for='zoom-slider'>Масштаб:</label>
+        <input type='range' id='zoom-slider' class='zoom-slider' min='0.1' max='20' step='0.1' value='1' />
+        <input type='number' id='zoom-input' class='zoom-input' min='0.1' max='20' step='0.1' value='1.00' />
+        <span style='color: #666;'>×</span>
+        <div class='zoom-buttons'>
+            <button id='zoom-out' class='zoom-button'>−</button>
+            <button id='zoom-reset' class='zoom-button'>Сброс</button>
+            <button id='zoom-in' class='zoom-button'>+</button>
+        </div>
+        <span style='color: #666; font-size: 12px; margin-left: 10px;'>(Ctrl+колесо мыши для масштабирования)</span>
+    </div>
+    <div class='timeline-container'>
+        <div class='time-axis' style='width: 1701px;' data-original-width='1701'>
+            <div class='time-marker' style='left: 0px;' data-original-left='0'>12:41:45.556</div>
+            <div class='time-marker' style='left: 170px;' data-original-left='170'>12:41:47.257</div>
+            <div class='time-marker' style='left: 340px;' data-original-left='340'>12:41:48.958</div>
+            <div class='time-marker' style='left: 510px;' data-original-left='510'>12:41:50.659</div>
+            <div class='time-marker' style='left: 680px;' data-original-left='680'>12:41:52.361</div>
+            <div class='time-marker' style='left: 850px;' data-original-left='850'>12:41:54.062</div>
+            <div class='time-marker' style='left: 1020px;' data-original-left='1020'>12:41:55.763</div>
+            <div class='time-marker' style='left: 1190px;' data-original-left='1190'>12:41:57.464</div>
+            <div class='time-marker' style='left: 1360px;' data-original-left='1360'>12:41:59.165</div>
+            <div class='time-marker' style='left: 1531px;' data-original-left='1531'>12:42:00.866</div>
+            <div class='time-marker' style='left: 1701px;' data-original-left='1701'>12:42:02.567</div>
+        </div>
+        <div class='timeline'>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>1</div>
+                <div class='test-block failed' 
+                     style='left: 0.01px; width: 2.12px;'
+                     data-original-left='0.01'
+                     data-original-width='2.12'
+                     data-test-name='Tests.RetryTests.RetryTest2'
+                     data-worker='NUnit.Fw.ParallelWorker#1'
+                     data-start='12:41:45.556'
+                     data-end='12:41:45.577'
+                     data-duration='21.20'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>RetryTest2
+                </div>
+                <div class='test-block failed' 
+                     style='left: 3.22px; width: 2.00px;'
+                     data-original-left='3.22'
+                     data-original-width='2.00'
+                     data-test-name='Tests.RetryTests.RetryTest2'
+                     data-worker='NUnit.Fw.ParallelWorker#1'
+                     data-start='12:41:45.578'
+                     data-end='12:41:45.579'
+                     data-duration='0.61'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>RetryTest2
+                </div>
+                <div class='test-block failed' 
+                     style='left: 3.36px; width: 2.00px;'
+                     data-original-left='3.36'
+                     data-original-width='2.00'
+                     data-test-name='Tests.RetryTests.RetryTest2'
+                     data-worker='NUnit.Fw.ParallelWorker#1'
+                     data-start='12:41:45.580'
+                     data-end='12:41:45.580'
+                     data-duration='0.36'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>RetryTest2
+                </div>
+                <div class='test-block failed' 
+                     style='left: 3.40px; width: 2.00px;'
+                     data-original-left='3.40'
+                     data-original-width='2.00'
+                     data-test-name='Tests.RetryTests.RetryTest2'
+                     data-worker='NUnit.Fw.ParallelWorker#1'
+                     data-start='12:41:45.580'
+                     data-end='12:41:45.580'
+                     data-duration='0.22'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>RetryTest2
+                </div>
+                <div class='test-block failed' 
+                     style='left: 3.42px; width: 2.00px;'
+                     data-original-left='3.42'
+                     data-original-width='2.00'
+                     data-test-name='Tests.RetryTests.RetryTest2'
+                     data-worker='NUnit.Fw.ParallelWorker#1'
+                     data-start='12:41:45.580'
+                     data-end='12:41:45.580'
+                     data-duration='0.18'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>RetryTest2
+                </div>
+                <div class='test-block passed' 
+                     style='left: 2.55px; width: 55.10px;'
+                     data-original-left='2.55'
+                     data-original-width='55.10'
+                     data-test-name='Tests.SlowTests.SlowTest4'
+                     data-worker='NUnit.Fw.ParallelWorker#1'
+                     data-start='12:41:45.581'
+                     data-end='12:41:46.132'
+                     data-duration='550.99'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>SlowTest4
+                </div>
+                <div class='test-block passed' 
+                     style='left: 58.66px; width: 164.12px;'
+                     data-original-left='58.66'
+                     data-original-width='164.12'
+                     data-test-name='Tests.ParallelTests.QuickTest2'
+                     data-worker='NUnit.Fw.ParallelWorker#1'
+                     data-start='12:41:46.133'
+                     data-end='12:41:47.784'
+                     data-duration='1651.20'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>QuickTest2
+                </div>
+                <div class='test-block failed' 
+                     style='left: 223.80px; width: 563.06px;'
+                     data-original-left='223.80'
+                     data-original-width='563.06'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(9)'
+                     data-worker='NUnit.Fw.ParallelWorker#1'
+                     data-start='12:41:47.784'
+                     data-end='12:41:53.425'
+                     data-duration='5640.65'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>RandomShortSleep(9)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>2</div>
+                <div class='test-block passed' 
+                     style='left: 0.14px; width: 180.08px;'
+                     data-original-left='0.14'
+                     data-original-width='180.08'
+                     data-test-name='Tests.FastTests.FastTest7'
+                     data-worker='NUnit.Fw.ParallelWorker#10'
+                     data-start='12:41:45.557'
+                     data-end='12:41:47.358'
+                     data-duration='1800.81'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>FastTest7
+                </div>
+                <div class='test-block passed' 
+                     style='left: 181.23px; width: 419.53px;'
+                     data-original-left='181.23'
+                     data-original-width='419.53'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(4)'
+                     data-worker='NUnit.Fw.ParallelWorker#10'
+                     data-start='12:41:47.358'
+                     data-end='12:41:51.564'
+                     data-duration='4205.25'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomShortSleep(4)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>3</div>
+                <div class='test-block passed' 
+                     style='left: 0.01px; width: 160.22px;'
+                     data-original-left='0.01'
+                     data-original-width='160.22'
+                     data-test-name='Tests.FastTests.FastTest10'
+                     data-worker='NUnit.Fw.ParallelWorker#11'
+                     data-start='12:41:45.556'
+                     data-end='12:41:47.158'
+                     data-duration='1602.20'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>FastTest10
+                </div>
+                <div class='test-block passed' 
+                     style='left: 161.26px; width: 7.08px;'
+                     data-original-left='161.26'
+                     data-original-width='7.08'
+                     data-test-name='Tests.MixedDurationTests.ShortTest'
+                     data-worker='NUnit.Fw.ParallelWorker#11'
+                     data-start='12:41:47.159'
+                     data-end='12:41:47.239'
+                     data-duration='80.81'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>ShortTest
+                </div>
+                <div class='test-block passed' 
+                     style='left: 169.35px; width: 134.08px;'
+                     data-original-left='169.35'
+                     data-original-width='134.08'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(3)'
+                     data-worker='NUnit.Fw.ParallelWorker#11'
+                     data-start='12:41:47.239'
+                     data-end='12:41:48.590'
+                     data-duration='1350.83'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomShortSleep(3)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>4</div>
+                <div class='test-block passed' 
+                     style='left: 0.01px; width: 100.15px;'
+                     data-original-left='0.01'
+                     data-original-width='100.15'
+                     data-test-name='Tests.FastTests.FastTest2'
+                     data-worker='NUnit.Fw.ParallelWorker#12'
+                     data-start='12:41:45.556'
+                     data-end='12:41:46.557'
+                     data-duration='1001.47'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>FastTest2
+                </div>
+                <div class='test-block passed' 
+                     style='left: 101.17px; width: 29.12px;'
+                     data-original-left='101.17'
+                     data-original-width='29.12'
+                     data-test-name='Tests.MixedDurationTests.MediumTest1'
+                     data-worker='NUnit.Fw.ParallelWorker#12'
+                     data-start='12:41:46.558'
+                     data-end='12:41:46.859'
+                     data-duration='301.20'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>MediumTest1
+                </div>
+                <div class='test-block passed' 
+                     style='left: 131.31px; width: 119.09px;'
+                     data-original-left='131.31'
+                     data-original-width='119.09'
+                     data-test-name='Tests.ParallelTests.QuickTest8'
+                     data-worker='NUnit.Fw.ParallelWorker#12'
+                     data-start='12:41:46.859'
+                     data-end='12:41:48.060'
+                     data-duration='1200.88'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>QuickTest8
+                </div>
+                <div class='test-block long-running' 
+                     style='left: 251.40px; width: 1449.75px;'
+                     data-original-left='251.40'
+                     data-original-width='1449.75'
+                     data-test-name='Tests.RandomDurationTests.RandomSleep(1)'
+                     data-worker='NUnit.Fw.ParallelWorker#12'
+                     data-start='12:41:48.060'
+                     data-end='12:42:02.567'
+                     data-duration='14507.46'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomSleep(1)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>5</div>
+                <div class='test-block passed' 
+                     style='left: 0.00px; width: 130.18px;'
+                     data-original-left='0.00'
+                     data-original-width='130.18'
+                     data-test-name='Tests.FastTests.FastTest4'
+                     data-worker='NUnit.Fw.ParallelWorker#13'
+                     data-start='12:41:45.556'
+                     data-end='12:41:46.858'
+                     data-duration='1301.85'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>FastTest4
+                </div>
+                <div class='test-block passed' 
+                     style='left: 131.22px; width: 34.10px;'
+                     data-original-left='131.22'
+                     data-original-width='34.10'
+                     data-test-name='Tests.MixedDurationTests.MediumTest2'
+                     data-worker='NUnit.Fw.ParallelWorker#13'
+                     data-start='12:41:46.858'
+                     data-end='12:41:47.209'
+                     data-duration='351.02'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>MediumTest2
+                </div>
+                <div class='test-block passed' 
+                     style='left: 166.33px; width: 728.56px;'
+                     data-original-left='166.33'
+                     data-original-width='728.56'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(1)'
+                     data-worker='NUnit.Fw.ParallelWorker#13'
+                     data-start='12:41:47.209'
+                     data-end='12:41:54.505'
+                     data-duration='7295.64'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomShortSleep(1)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>6</div>
+                <div class='test-block passed' 
+                     style='left: 0.01px; width: 200.15px;'
+                     data-original-left='0.01'
+                     data-original-width='200.15'
+                     data-test-name='Tests.FastTests.FastTest3'
+                     data-worker='NUnit.Fw.ParallelWorker#14'
+                     data-start='12:41:45.556'
+                     data-end='12:41:47.558'
+                     data-duration='2001.50'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>FastTest3
+                </div>
+                <div class='test-block passed' 
+                     style='left: 201.18px; width: 242.83px;'
+                     data-original-left='201.18'
+                     data-original-width='242.83'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(6)'
+                     data-worker='NUnit.Fw.ParallelWorker#14'
+                     data-start='12:41:47.558'
+                     data-end='12:41:49.996'
+                     data-duration='2438.28'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomShortSleep(6)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>7</div>
+                <div class='test-block failed' 
+                     style='left: 0.00px; width: 2.13px;'
+                     data-original-left='0.00'
+                     data-original-width='2.13'
+                     data-test-name='Tests.RetryTests.RetryTest1'
+                     data-worker='NUnit.Fw.ParallelWorker#15'
+                     data-start='12:41:45.556'
+                     data-end='12:41:45.577'
+                     data-duration='21.33'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>RetryTest1
+                </div>
+                <div class='test-block failed' 
+                     style='left: 3.22px; width: 2.00px;'
+                     data-original-left='3.22'
+                     data-original-width='2.00'
+                     data-test-name='Tests.RetryTests.RetryTest1'
+                     data-worker='NUnit.Fw.ParallelWorker#15'
+                     data-start='12:41:45.578'
+                     data-end='12:41:45.579'
+                     data-duration='0.78'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>RetryTest1
+                </div>
+                <div class='test-block passed' 
+                     style='left: 3.37px; width: 2.00px;'
+                     data-original-left='3.37'
+                     data-original-width='2.00'
+                     data-test-name='Tests.RetryTests.RetryTest1'
+                     data-worker='NUnit.Fw.ParallelWorker#15'
+                     data-start='12:41:45.580'
+                     data-end='12:41:45.580'
+                     data-duration='0.15'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RetryTest1
+                </div>
+                <div class='test-block passed' 
+                     style='left: 2.77px; width: 65.15px;'
+                     data-original-left='2.77'
+                     data-original-width='65.15'
+                     data-test-name='Tests.SlowTests.SlowTest6'
+                     data-worker='NUnit.Fw.ParallelWorker#15'
+                     data-start='12:41:45.584'
+                     data-end='12:41:46.235'
+                     data-duration='651.53'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>SlowTest6
+                </div>
+                <div class='test-block passed' 
+                     style='left: 69.01px; width: 129.07px;'
+                     data-original-left='69.01'
+                     data-original-width='129.07'
+                     data-test-name='Tests.ParallelTests.QuickTest4'
+                     data-worker='NUnit.Fw.ParallelWorker#15'
+                     data-start='12:41:46.236'
+                     data-end='12:41:47.537'
+                     data-duration='1300.68'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>QuickTest4
+                </div>
+                <div class='test-block passed' 
+                     style='left: 199.08px; width: 640.44px;'
+                     data-original-left='199.08'
+                     data-original-width='640.44'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(5)'
+                     data-worker='NUnit.Fw.ParallelWorker#15'
+                     data-start='12:41:47.537'
+                     data-end='12:41:53.951'
+                     data-duration='6414.39'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomShortSleep(5)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>8</div>
+                <div class='test-block passed' 
+                     style='left: 0.01px; width: 115.16px;'
+                     data-original-left='0.01'
+                     data-original-width='115.16'
+                     data-test-name='Tests.FastTests.FastTest8'
+                     data-worker='NUnit.Fw.ParallelWorker#16'
+                     data-start='12:41:45.556'
+                     data-end='12:41:46.708'
+                     data-duration='1151.56'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>FastTest8
+                </div>
+                <div class='test-block passed' 
+                     style='left: 116.19px; width: 99.14px;'
+                     data-original-left='116.19'
+                     data-original-width='99.14'
+                     data-test-name='Tests.ParallelTests.QuickTest6'
+                     data-worker='NUnit.Fw.ParallelWorker#16'
+                     data-start='12:41:46.708'
+                     data-end='12:41:47.709'
+                     data-duration='1001.38'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>QuickTest6
+                </div>
+                <div class='test-block passed' 
+                     style='left: 216.34px; width: 756.52px;'
+                     data-original-left='216.34'
+                     data-original-width='756.52'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(8)'
+                     data-worker='NUnit.Fw.ParallelWorker#16'
+                     data-start='12:41:47.709'
+                     data-end='12:41:55.285'
+                     data-duration='7575.24'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomShortSleep(8)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>9</div>
+                <div class='test-block passed' 
+                     style='left: 0.02px; width: 61.08px;'
+                     data-original-left='0.02'
+                     data-original-width='61.08'
+                     data-test-name='Tests.SlowTests.SlowTest2'
+                     data-worker='NUnit.Fw.ParallelWorker#2'
+                     data-start='12:41:45.556'
+                     data-end='12:41:46.167'
+                     data-duration='610.78'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>SlowTest2
+                </div>
+                <div class='test-block passed' 
+                     style='left: 62.11px; width: 219.09px;'
+                     data-original-left='62.11'
+                     data-original-width='219.09'
+                     data-test-name='Tests.ParallelTests.QuickTest3'
+                     data-worker='NUnit.Fw.ParallelWorker#2'
+                     data-start='12:41:46.167'
+                     data-end='12:41:48.368'
+                     data-duration='2200.88'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>QuickTest3
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>10</div>
+                <div class='test-block passed' 
+                     style='left: 0.02px; width: 45.24px;'
+                     data-original-left='0.02'
+                     data-original-width='45.24'
+                     data-test-name='Tests.SlowTests.SlowTest3'
+                     data-worker='NUnit.Fw.ParallelWorker#3'
+                     data-start='12:41:45.556'
+                     data-end='12:41:46.008'
+                     data-duration='452.39'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>SlowTest3
+                </div>
+                <div class='test-block passed' 
+                     style='left: 46.28px; width: 8.58px;'
+                     data-original-left='46.28'
+                     data-original-width='8.58'
+                     data-test-name='Tests.MixedDurationTests.AnotherShortTest'
+                     data-worker='NUnit.Fw.ParallelWorker#3'
+                     data-start='12:41:46.009'
+                     data-end='12:41:46.104'
+                     data-duration='95.78'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>AnotherShortTest
+                </div>
+                <div class='test-block passed' 
+                     style='left: 55.86px; width: 109.08px;'
+                     data-original-left='55.86'
+                     data-original-width='109.08'
+                     data-test-name='Tests.ParallelTests.QuickTest1'
+                     data-worker='NUnit.Fw.ParallelWorker#3'
+                     data-start='12:41:46.105'
+                     data-end='12:41:47.205'
+                     data-duration='1100.80'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>QuickTest1
+                </div>
+                <div class='test-block passed' 
+                     style='left: 165.95px; width: 2.00px;'
+                     data-original-left='165.95'
+                     data-original-width='2.00'
+                     data-test-name='Tests.MixedDurationTests.VeryShortTest'
+                     data-worker='NUnit.Fw.ParallelWorker#3'
+                     data-start='12:41:47.205'
+                     data-end='12:41:47.226'
+                     data-duration='20.49'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>VeryShortTest
+                </div>
+                <div class='test-block passed' 
+                     style='left: 168.01px; width: 933.02px;'
+                     data-original-left='168.01'
+                     data-original-width='933.02'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(2)'
+                     data-worker='NUnit.Fw.ParallelWorker#3'
+                     data-start='12:41:47.226'
+                     data-end='12:41:56.566'
+                     data-duration='9340.17'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomShortSleep(2)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>11</div>
+                <div class='test-block passed' 
+                     style='left: 0.03px; width: 230.14px;'
+                     data-original-left='0.03'
+                     data-original-width='230.14'
+                     data-test-name='Tests.FastTests.FastTest5'
+                     data-worker='NUnit.Fw.ParallelWorker#4'
+                     data-start='12:41:45.556'
+                     data-end='12:41:47.858'
+                     data-duration='2301.42'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>FastTest5
+                </div>
+                <div class='test-block failed' 
+                     style='left: 231.18px; width: 429.53px;'
+                     data-original-left='231.18'
+                     data-original-width='429.53'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(10)'
+                     data-worker='NUnit.Fw.ParallelWorker#4'
+                     data-start='12:41:47.858'
+                     data-end='12:41:52.163'
+                     data-duration='4305.29'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>RandomShortSleep(10)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>12</div>
+                <div class='test-block passed' 
+                     style='left: 0.02px; width: 215.21px;'
+                     data-original-left='0.02'
+                     data-original-width='215.21'
+                     data-test-name='Tests.FastTests.FastTest9'
+                     data-worker='NUnit.Fw.ParallelWorker#5'
+                     data-start='12:41:45.556'
+                     data-end='12:41:47.708'
+                     data-duration='2152.09'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>FastTest9
+                </div>
+                <div class='test-block passed' 
+                     style='left: 216.26px; width: 973.93px;'
+                     data-original-left='216.26'
+                     data-original-width='973.93'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(7)'
+                     data-worker='NUnit.Fw.ParallelWorker#5'
+                     data-start='12:41:47.709'
+                     data-end='12:41:57.458'
+                     data-duration='9749.29'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomShortSleep(7)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>13</div>
+                <div class='test-block failed' 
+                     style='left: 0.00px; width: 40.31px;'
+                     data-original-left='0.00'
+                     data-original-width='40.31'
+                     data-test-name='Tests.SlowTests.FailingSlowTest'
+                     data-worker='NUnit.Fw.ParallelWorker#6'
+                     data-start='12:41:45.556'
+                     data-end='12:41:45.959'
+                     data-duration='403.07'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>FailingSlowTest
+                </div>
+                <div class='test-block passed' 
+                     style='left: 40.44px; width: 28.14px;'
+                     data-original-left='40.44'
+                     data-original-width='28.14'
+                     data-test-name='Tests.MixedDurationTests.AnotherMediumTest'
+                     data-worker='NUnit.Fw.ParallelWorker#6'
+                     data-start='12:41:45.960'
+                     data-end='12:41:46.242'
+                     data-duration='281.39'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>AnotherMediumTest
+                </div>
+                <div class='test-block passed' 
+                     style='left: 69.59px; width: 199.14px;'
+                     data-original-left='69.59'
+                     data-original-width='199.14'
+                     data-test-name='Tests.ParallelTests.QuickTest5'
+                     data-worker='NUnit.Fw.ParallelWorker#6'
+                     data-start='12:41:46.242'
+                     data-end='12:41:48.243'
+                     data-duration='2001.42'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>QuickTest5
+                </div>
+                <div class='test-block long-running' 
+                     style='left: 269.78px; width: 1277.86px;'
+                     data-original-left='269.78'
+                     data-original-width='1277.86'
+                     data-test-name='Tests.RandomDurationTests.RandomSleep(2)'
+                     data-worker='NUnit.Fw.ParallelWorker#6'
+                     data-start='12:41:48.244'
+                     data-end='12:42:01.032'
+                     data-duration='12788.60'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>RandomSleep(2)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>14</div>
+                <div class='test-block passed' 
+                     style='left: 0.01px; width: 50.15px;'
+                     data-original-left='0.01'
+                     data-original-width='50.15'
+                     data-test-name='Tests.SlowTests.SlowTest1'
+                     data-worker='NUnit.Fw.ParallelWorker#7'
+                     data-start='12:41:45.556'
+                     data-end='12:41:46.058'
+                     data-duration='501.53'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>SlowTest1
+                </div>
+                <div class='test-block passed' 
+                     style='left: 51.18px; width: 69.15px;'
+                     data-original-left='51.18'
+                     data-original-width='69.15'
+                     data-test-name='Tests.MixedDurationTests.LongTest'
+                     data-worker='NUnit.Fw.ParallelWorker#7'
+                     data-start='12:41:46.058'
+                     data-end='12:41:46.759'
+                     data-duration='701.52'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>LongTest
+                </div>
+                <div class='test-block passed' 
+                     style='left: 121.35px; width: 174.09px;'
+                     data-original-left='121.35'
+                     data-original-width='174.09'
+                     data-test-name='Tests.ParallelTests.QuickTest7'
+                     data-worker='NUnit.Fw.ParallelWorker#7'
+                     data-start='12:41:46.759'
+                     data-end='12:41:48.510'
+                     data-duration='1750.88'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>QuickTest7
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>15</div>
+                <div class='test-block passed' 
+                     style='left: 0.02px; width: 165.12px;'
+                     data-original-left='0.02'
+                     data-original-width='165.12'
+                     data-test-name='Tests.FastTests.FastTest1'
+                     data-worker='NUnit.Fw.ParallelWorker#8'
+                     data-start='12:41:45.556'
+                     data-end='12:41:47.207'
+                     data-duration='1651.20'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>FastTest1
+                </div>
+                <div class='test-block passed' 
+                     style='left: 166.15px; width: 923.67px;'
+                     data-original-left='166.15'
+                     data-original-width='923.67'
+                     data-test-name='Tests.RandomDurationTests.RandomShortSleep(0)'
+                     data-worker='NUnit.Fw.ParallelWorker#8'
+                     data-start='12:41:47.207'
+                     data-end='12:41:56.454'
+                     data-duration='9246.72'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomShortSleep(0)
+                </div>
+            </div>
+            <div class='worker-row' style='width: 1701px;'>
+                <div class='worker-label'>16</div>
+                <div class='test-block passed' 
+                     style='left: 0.01px; width: 150.14px;'
+                     data-original-left='0.01'
+                     data-original-width='150.14'
+                     data-test-name='Tests.FastTests.FastTest6'
+                     data-worker='NUnit.Fw.ParallelWorker#9'
+                     data-start='12:41:45.556'
+                     data-end='12:41:47.057'
+                     data-duration='1501.43'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>FastTest6
+                </div>
+                <div class='test-block failed' 
+                     style='left: 151.16px; width: 9.43px;'
+                     data-original-left='151.16'
+                     data-original-width='9.43'
+                     data-test-name='Tests.MixedDurationTests.QuickFailingTest'
+                     data-worker='NUnit.Fw.ParallelWorker#9'
+                     data-start='12:41:47.058'
+                     data-end='12:41:47.162'
+                     data-duration='104.29'
+                     data-status='Failed'>
+                    <span style='margin-right: 4px;'>❌</span>QuickFailingTest
+                </div>
+                <div class='test-block passed' 
+                     style='left: 161.62px; width: 79.07px;'
+                     data-original-left='161.62'
+                     data-original-width='79.07'
+                     data-test-name='Tests.MixedDurationTests.VeryLongTest'
+                     data-worker='NUnit.Fw.ParallelWorker#9'
+                     data-start='12:41:47.162'
+                     data-end='12:41:47.963'
+                     data-duration='800.73'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>VeryLongTest
+                </div>
+                <div class='test-block long-running' 
+                     style='left: 241.70px; width: 1172.14px;'
+                     data-original-left='241.70'
+                     data-original-width='1172.14'
+                     data-test-name='Tests.RandomDurationTests.RandomSleep(0)'
+                     data-worker='NUnit.Fw.ParallelWorker#9'
+                     data-start='12:41:47.963'
+                     data-end='12:41:59.694'
+                     data-duration='11731.38'
+                     data-status='Passed'>
+                    <span style='margin-right: 4px;'>✅</span>RandomSleep(0)
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class='test-lists-container'>
+        <div class='test-list-block long-running'>
+            <h2>⚠️ Долгие тесты (3)</h2>
+            <ul class='test-list'>
+                <li class='long-running'>
+                    <span class='test-name'>Tests.RandomDurationTests.RandomSleep(1)</span>
+                    <span class='test-duration'>(14.51 сек)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#12</span>
+                </li>
+                <li class='long-running'>
+                    <span class='test-name'>Tests.RandomDurationTests.RandomSleep(2)</span>
+                    <span class='test-duration'>(12.79 сек)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#6</span>
+                </li>
+                <li class='long-running'>
+                    <span class='test-name'>Tests.RandomDurationTests.RandomSleep(0)</span>
+                    <span class='test-duration'>(11.73 сек)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#9</span>
+                </li>
+            </ul>
+        </div>
+        <div class='test-list-block failed'>
+            <h2>❌ Упавшие тесты (12)</h2>
+            <ul class='test-list'>
+                <li class='failed'>
+                    <span class='test-name'>Tests.MixedDurationTests.QuickFailingTest</span>
+                    <span class='test-duration'>(104.29 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#9</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.RandomDurationTests.RandomShortSleep(10)</span>
+                    <span class='test-duration'>(4305.29 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#4</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.RandomDurationTests.RandomShortSleep(9)</span>
+                    <span class='test-duration'>(5640.65 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#1</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.RandomDurationTests.RandomSleep(2)</span>
+                    <span class='test-duration'>(12788.60 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#6</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.RetryTests.RetryTest1</span>
+                    <span class='test-duration'>(21.33 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#15</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.RetryTests.RetryTest1</span>
+                    <span class='test-duration'>(0.78 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#15</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.RetryTests.RetryTest2</span>
+                    <span class='test-duration'>(21.20 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#1</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.RetryTests.RetryTest2</span>
+                    <span class='test-duration'>(0.61 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#1</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.RetryTests.RetryTest2</span>
+                    <span class='test-duration'>(0.36 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#1</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.RetryTests.RetryTest2</span>
+                    <span class='test-duration'>(0.22 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#1</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.RetryTests.RetryTest2</span>
+                    <span class='test-duration'>(0.18 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#1</span>
+                </li>
+                <li class='failed'>
+                    <span class='test-name'>Tests.SlowTests.FailingSlowTest</span>
+                    <span class='test-duration'>(403.07 мс)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#6</span>
+                </li>
+            </ul>
+        </div>
+        <div class='test-list-block retried'>
+            <h2>🔄 Тесты с перезапусками (2)</h2>
+            <ul class='test-list'>
+                <li class='retried'>
+                    <span class='test-name'>Tests.RetryTests.RetryTest2</span>
+                    <span class='test-retry-count'>Перезапусков: 3 (всего запусков: 5)</span>
+                    <span class='test-duration'>(0.18 мс последний)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#1</span>
+                </li>
+                <li class='retried'>
+                    <span class='test-name'>Tests.RetryTests.RetryTest1</span>
+                    <span class='test-retry-count'>Перезапусков: 1 (всего запусков: 3)</span>
+                    <span class='test-duration'>(0.15 мс последний)</span>
+                    <span class='test-worker'>Worker: NUnit.Fw.ParallelWorker#15</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <div id='tooltip' class='tooltip'></div>
+    <script>
+
+        const tooltip = document.getElementById('tooltip');
+        const testBlocks = document.querySelectorAll('.test-block');
+        
+        // Обработка всплывающих подсказок
+        testBlocks.forEach(block => {
+            block.addEventListener('mouseenter', (e) => {
+                const testName = e.target.dataset.testName;
+                const worker = e.target.dataset.worker;
+                const start = e.target.dataset.start;
+                const end = e.target.dataset.end;
+                const duration = e.target.dataset.duration;
+                const status = e.target.dataset.status;
+                
+                tooltip.innerHTML = `
+                    <strong>Тест:</strong> ${testName}<br>
+                    <strong>Worker:</strong> ${worker}<br>
+                    <strong>Начало:</strong> ${start}<br>
+                    <strong>Окончание:</strong> ${end}<br>
+                    <strong>Длительность:</strong> ${duration} мс<br>
+                    <strong>Статус:</strong> ${status}
+                `;
+                
+                tooltip.classList.add('tooltip-visible');
+            });
+            
+            block.addEventListener('mousemove', (e) => {
+                tooltip.style.left = (e.clientX + 15) + 'px';
+                tooltip.style.top = (e.clientY + 15) + 'px';
+            });
+            
+            block.addEventListener('mouseleave', () => {
+                tooltip.classList.remove('tooltip-visible');
+            });
+        });
+
+        // Управление масштабом
+        let currentZoom = 1.0;
+        const zoomSlider = document.getElementById('zoom-slider');
+        const zoomInput = document.getElementById('zoom-input');
+        const timeAxis = document.querySelector('.time-axis');
+        const workerRows = document.querySelectorAll('.worker-row');
+        const timeMarkers = document.querySelectorAll('.time-marker');
+
+        function applyZoom(zoom) {
+            currentZoom = zoom;
+            
+            // Обновляем значения в контролах
+            zoomSlider.value = zoom;
+            zoomInput.value = zoom.toFixed(2);
+            
+            // Обновляем ширину временной оси и рядов
+            const originalWidth = parseFloat(timeAxis.dataset.originalWidth);
+            const newWidth = originalWidth * zoom;
+            timeAxis.style.width = newWidth + 'px';
+            workerRows.forEach(row => {
+                row.style.width = newWidth + 'px';
+            });
+            
+            // Обновляем позиции временных меток
+            timeMarkers.forEach(marker => {
+                const originalLeft = parseFloat(marker.dataset.originalLeft);
+                marker.style.left = (originalLeft * zoom) + 'px';
+            });
+            
+            // Обновляем позиции и размеры блоков тестов
+            testBlocks.forEach(block => {
+                const originalLeft = parseFloat(block.dataset.originalLeft);
+                const originalWidth = parseFloat(block.dataset.originalWidth);
+                block.style.left = (originalLeft * zoom) + 'px';
+                block.style.width = (originalWidth * zoom) + 'px';
+            });
+        }
+
+        // Обработчик изменения ползунка
+        zoomSlider.addEventListener('input', (e) => {
+            const zoom = parseFloat(e.target.value);
+            applyZoom(zoom);
+        });
+
+        // Обработчик изменения поля ввода
+        zoomInput.addEventListener('change', (e) => {
+            let zoom = parseFloat(e.target.value);
+            if (isNaN(zoom) || zoom < 0.1) zoom = 0.1;
+            if (zoom > 20) zoom = 20;
+            applyZoom(zoom);
+        });
+
+        // Обработчик Enter в поле ввода
+        zoomInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.target.blur();
+            }
+        });
+
+        // Кнопки быстрого масштабирования
+        document.getElementById('zoom-reset').addEventListener('click', () => {
+            applyZoom(1.0);
+        });
+
+        document.getElementById('zoom-in').addEventListener('click', () => {
+            const newZoom = Math.min(20, currentZoom * 1.5);
+            applyZoom(newZoom);
+        });
+
+        document.getElementById('zoom-out').addEventListener('click', () => {
+            const newZoom = Math.max(0.1, currentZoom / 1.5);
+            applyZoom(newZoom);
+        });
+
+        // Масштабирование колесом мыши
+        const timelineContainer = document.querySelector('.timeline-container');
+        timelineContainer.addEventListener('wheel', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                const newZoom = Math.max(0.1, Math.min(20, currentZoom * delta));
+                applyZoom(newZoom);
+            }
+        }, { passive: false });
+    
+    </script>
+</body>
+</html>
