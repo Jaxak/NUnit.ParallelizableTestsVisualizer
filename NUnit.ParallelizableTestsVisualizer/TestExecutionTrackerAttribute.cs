@@ -66,6 +66,16 @@ public class TestExecutionTrackerAttribute : Attribute, ITestAction
         var testName = test.FullName;
         var workerId = TestContext.CurrentContext.WorkerId ?? "0";
         
+        // Проверяем, запускался ли этот тест ранее
+        if (TestExecutionStorage.IsTestStartedBefore(testName))
+        {
+            // Это retry - увеличиваем счетчик
+            TestExecutionStorage.IncrementRetryCount(testName);
+        }
+        
+        // Помечаем тест как запущенный
+        TestExecutionStorage.MarkTestAsStarted(testName);
+        
         var info = new TestExecutionInfo
         {
             TestName = testName,

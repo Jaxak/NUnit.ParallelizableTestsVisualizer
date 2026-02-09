@@ -210,10 +210,26 @@ internal class HtmlTemplateBuilder
             .OrderBy(t => t.TestName)
             .ToList();
 
+        // Группируем тесты по имени и находим те, у которых было несколько запусков
+        var retriedTests = executions
+            .GroupBy(t => t.TestName)
+            .Where(g => g.Any(t => t.RetryCount > 0))
+            .Select(g => new
+            {
+                TestName = g.Key,
+                RetryCount = g.Max(t => t.RetryCount),
+                TotalExecutions = g.Count(),
+                LastExecution = g.OrderByDescending(t => t.StartTime).First()
+            })
+            .OrderByDescending(t => t.RetryCount)
+            .ThenBy(t => t.TestName)
+            .ToList();
+
         _html.AppendLine("    <div class='test-lists-container'>");
         
         AddLongRunningTestsList(longRunningTests);
         AddFailedTestsList(failedTests);
+        AddRetriedTestsList(retriedTests);
         
         _html.AppendLine("    </div>");
     }
@@ -273,6 +289,43 @@ internal class HtmlTemplateBuilder
         else
         {
             _html.AppendLine("            <div class='empty-message'>Упавших тестов не обнаружено</div>");
+        }
+        
+        _html.AppendLine("        </div>");
+    }
+
+    /// <summary>
+    /// Добавляет блок со списком тестов с перезапусками (Retry).
+    /// </summary>
+    private void AddRetriedTestsList(dynamic retriedTests)
+    {
+        var testsList = ((IEnumerable<dynamic>)retriedTests).ToList();
+        
+        _html.AppendLine("        <div class='test-list-block retried'>");
+        _html.AppendLine($"            <h2>🔄 Тесты с перезапусками ({testsList.Count})</h2>");
+        
+        if (testsList.Any())
+        {
+            _html.AppendLine("            <ul class='test-list'>");
+            foreach (var test in testsList)
+            {
+                var lastExecution = (TestExecutionInfo)test.LastExecution;
+                var durationMs = lastExecution.Duration.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture);
+                var retryCount = (int)test.RetryCount;
+                var totalExecutions = (int)test.TotalExecutions;
+                
+                _html.AppendLine("                <li class='retried'>");
+                _html.AppendLine($"                    <span class='test-name'>{EscapeHtml((string)test.TestName)}</span>");
+                _html.AppendLine($"                    <span class='test-retry-count'>Перезапусков: {retryCount} (всего запусков: {totalExecutions})</span>");
+                _html.AppendLine($"                    <span class='test-duration'>({durationMs} мс последний)</span>");
+                _html.AppendLine($"                    <span class='test-worker'>Worker: {EscapeHtml(lastExecution.WorkerId)}</span>");
+                _html.AppendLine("                </li>");
+            }
+            _html.AppendLine("            </ul>");
+        }
+        else
+        {
+            _html.AppendLine("            <div class='empty-message'>Тестов с перезапусками не обнаружено</div>");
         }
         
         _html.AppendLine("        </div>");

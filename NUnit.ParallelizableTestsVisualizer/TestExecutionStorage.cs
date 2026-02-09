@@ -9,6 +9,8 @@ public static class TestExecutionStorage
 {
     private static readonly ConcurrentBag<TestExecutionInfo> _executions = new ConcurrentBag<TestExecutionInfo>();
     private static readonly ConcurrentDictionary<string, TestExecutionInfo> _pendingExecutions = new ConcurrentDictionary<string, TestExecutionInfo>();
+    private static readonly ConcurrentDictionary<string, int> _testRetryCount = new ConcurrentDictionary<string, int>();
+    private static readonly ConcurrentDictionary<string, bool> _testStarted = new ConcurrentDictionary<string, bool>();
     
     /// <summary>
     /// Добавляет информацию о начале выполнения теста в хранилище незавершенных тестов.
@@ -39,6 +41,10 @@ public static class TestExecutionStorage
     {
         if (_pendingExecutions.TryRemove(testName, out var info))
         {
+            // Получаем текущее количество retry для этого теста
+            var retryCount = _testRetryCount.GetOrAdd(testName, 0);
+            info.RetryCount = retryCount;
+            
             _executions.Add(info);
         }
     }
@@ -49,7 +55,49 @@ public static class TestExecutionStorage
     /// <param name="info">Информация о выполнении теста.</param>
     public static void AddExecution(TestExecutionInfo info)
     {
+        // Получаем текущее количество retry для этого теста
+        var retryCount = _testRetryCount.GetOrAdd(info.TestName, 0);
+        info.RetryCount = retryCount;
+        
         _executions.Add(info);
+    }
+    
+    /// <summary>
+    /// Увеличивает счетчик retry для указанного теста.
+    /// </summary>
+    /// <param name="testName">Имя теста.</param>
+    public static void IncrementRetryCount(string testName)
+    {
+        _testRetryCount.AddOrUpdate(testName, 1, (key, oldValue) => oldValue + 1);
+    }
+    
+    /// <summary>
+    /// Получает количество retry для указанного теста.
+    /// </summary>
+    /// <param name="testName">Имя теста.</param>
+    /// <returns>Количество retry (0 если тест не перезапускался).</returns>
+    public static int GetRetryCount(string testName)
+    {
+        return _testRetryCount.TryGetValue(testName, out var count) ? count : 0;
+    }
+    
+    /// <summary>
+    /// Проверяет, был ли тест уже запущен ранее.
+    /// </summary>
+    /// <param name="testName">Имя теста.</param>
+    /// <returns>true, если тест уже запускался; иначе false.</returns>
+    public static bool IsTestStartedBefore(string testName)
+    {
+        return _testStarted.ContainsKey(testName);
+    }
+    
+    /// <summary>
+    /// Помечает тест как запущенный.
+    /// </summary>
+    /// <param name="testName">Имя теста.</param>
+    public static void MarkTestAsStarted(string testName)
+    {
+        _testStarted[testName] = true;
     }
     
     /// <summary>
@@ -68,5 +116,7 @@ public static class TestExecutionStorage
     {
         _executions.Clear();
         _pendingExecutions.Clear();
+        _testRetryCount.Clear();
+        _testStarted.Clear();
     }
 }

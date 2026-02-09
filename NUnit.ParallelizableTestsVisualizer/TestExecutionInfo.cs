@@ -34,4 +34,9 @@ public class TestExecutionInfo
     /// Статус выполнения теста (Passed, Failed, Skipped, Inconclusive).
     /// </summary>
     public string Status { get; set; }
+    
+    /// <summary>
+    /// Количество перезапусков теста (0 = запущен один раз без повторов).
+    /// </summary>
+    public int RetryCount { get; set; }
 }

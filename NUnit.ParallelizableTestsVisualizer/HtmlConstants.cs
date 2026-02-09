@@ -70,14 +70,17 @@ internal static class HtmlConstants
         .test-list-block.long-running h2 { border-color: #FFD700; color: #F57C00; }
         .test-list-block.failed h2 { border-color: #f44336; color: #f44336; }
         .test-list-block.skipped h2 { border-color: #FF9800; color: #FF9800; }
+        .test-list-block.retried h2 { border-color: #2196F3; color: #2196F3; }
         .test-list { list-style: none; padding: 0; margin: 0; }
         .test-list li { padding: 10px; margin-bottom: 8px; background: #f9f9f9; border-radius: 4px; border-left: 4px solid #ddd; font-size: 14px; word-break: break-word; }
         .test-list li.long-running { border-left-color: #FFD700; background: #FFFDE7; }
         .test-list li.failed { border-left-color: #f44336; background: #FFEBEE; }
         .test-list li.skipped { border-left-color: #FF9800; background: #FFF3E0; }
+        .test-list li.retried { border-left-color: #2196F3; background: #E3F2FD; }
         .test-list .test-name { font-weight: bold; color: #333; }
         .test-list .test-duration { color: #666; font-size: 12px; margin-left: 10px; }
         .test-list .test-worker { color: #888; font-size: 12px; margin-left: 10px; }
+        .test-list .test-retry-count { color: #2196F3; font-size: 12px; margin-left: 10px; font-weight: bold; }
         .test-list .empty-message { color: #999; font-style: italic; text-align: center; padding: 20px; }
     ";
 
