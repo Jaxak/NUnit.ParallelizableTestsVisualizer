@@ -12,6 +12,7 @@ public class TestExecutionTrackerAttribute : Attribute, ITestAction
 {
     private static bool _isInitialized;
     private static readonly object _lock = new object();
+    private static string? _assemblyName;
     
     /// <summary>
     /// Путь к директории для сохранения результатов.
@@ -19,17 +20,29 @@ public class TestExecutionTrackerAttribute : Attribute, ITestAction
     public string OutputPath { get; set; } = "TestResults";
     
     /// <summary>
+    /// Порог длительности теста в секундах для пометки как "долгий".
+    /// </summary>
+    public double LongRunningTestThresholdSeconds { get; set; } = HtmlConstants.LongRunningTestThresholdSeconds;
+    
+    /// <summary>
+    /// Название сборки для отображения в отчете (опционально, определяется автоматически).
+    /// </summary>
+    public string? AssemblyName { get; set; }
+    
+    /// <summary>
     /// Определяет, к каким элементам применяется действие (только к тестам).
     /// </summary>
     public ActionTargets Targets => ActionTargets.Test;
-    
+
     /// <summary>
     /// Инициализирует новый экземпляр атрибута TestExecutionTrackerAttribute.
     /// </summary>
     /// <param name="outputPath">Путь к директории для сохранения результатов. По умолчанию "TestResults".</param>
-    public TestExecutionTrackerAttribute(string outputPath)
+    /// <param name="longTimeSeconds">Порог длительности теста в секундах для пометки как "долгий".</param>
+    public TestExecutionTrackerAttribute(string outputPath, double longTimeSeconds = HtmlConstants.LongRunningTestThresholdSeconds)
     {
         OutputPath = outputPath;
+        LongRunningTestThresholdSeconds = longTimeSeconds;
     }
 
     /// <summary>
@@ -45,7 +58,7 @@ public class TestExecutionTrackerAttribute : Attribute, ITestAction
     /// <param name="test">Информация о тесте.</param>
     public void BeforeTest(ITest test)
     {
-        EnsureInitialized();
+        EnsureInitialized(test);
         
         if (test.IsSuite)
             return;
@@ -85,7 +98,7 @@ public class TestExecutionTrackerAttribute : Attribute, ITestAction
     /// <summary>
     /// Гарантирует однократную инициализацию трекера и регистрацию обработчиков экспорта результатов.
     /// </summary>
-    private void EnsureInitialized()
+    private void EnsureInitialized(ITest test)
     {
         if (_isInitialized)
             return;
@@ -98,9 +111,46 @@ public class TestExecutionTrackerAttribute : Attribute, ITestAction
             _isInitialized = true;
             TestExecutionStorage.Clear();
             
+            // Определяем имя сборки если оно не задано явно
+            if (string.IsNullOrWhiteSpace(_assemblyName))
+            {
+                _assemblyName = AssemblyName ?? TryGetAssemblyName(test);
+            }
+            
             AppDomain.CurrentDomain.ProcessExit += (sender, args) => ExportResults();
             AppDomain.CurrentDomain.DomainUnload += (sender, args) => ExportResults();
         }
+    }
+
+    /// <summary>
+    /// Пытается определить имя тестовой сборки.
+    /// </summary>
+    private static string? TryGetAssemblyName(ITest test)
+    {
+        try
+        {
+            // Пытаемся получить имя сборки из типа теста
+            if (test.TypeInfo?.Type != null)
+            {
+                return test.TypeInfo.Type.Assembly.GetName().Name;
+            }
+            
+            // Если не удалось, пытаемся получить из полного имени теста
+            if (!string.IsNullOrEmpty(test.FullName))
+            {
+                var parts = test.FullName.Split('.');
+                if (parts.Length > 0)
+                {
+                    return parts[0];
+                }
+            }
+        }
+        catch
+        {
+            // Игнорируем ошибки
+        }
+        
+        return null;
     }
 
     /// <summary>
@@ -125,7 +175,7 @@ public class TestExecutionTrackerAttribute : Attribute, ITestAction
             var htmlPath = Path.Combine(OutputPath, $"test-execution-{timestamp}.html");
 
             JsonExporter.Export(executions, jsonPath);
-            HtmlExporter.Export(executions, htmlPath);
+            HtmlExporter.Export(executions, htmlPath, _assemblyName, LongRunningTestThresholdSeconds);
         }
         catch (Exception ex)
         {
