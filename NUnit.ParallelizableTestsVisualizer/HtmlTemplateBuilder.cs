@@ -65,8 +65,8 @@ internal class HtmlTemplateBuilder
     {
         _html.AppendLine("    <div class='zoom-control'>");
         _html.AppendLine("        <label for='zoom-slider'>Масштаб:</label>");
-        _html.AppendLine("        <input type='range' id='zoom-slider' class='zoom-slider' min='0.1' max='20' step='0.1' value='1' />");
-        _html.AppendLine("        <input type='number' id='zoom-input' class='zoom-input' min='0.1' max='20' step='0.1' value='1.00' />");
+        _html.AppendLine("        <input type='range' id='zoom-slider' class='zoom-slider' min='0.1' max='50' step='0.1' value='1' />");
+        _html.AppendLine("        <input type='number' id='zoom-input' class='zoom-input' min='0.1' max='50' step='0.1' value='1.00' />");
         _html.AppendLine("        <span style='color: #666;'>×</span>");
         _html.AppendLine("        <div class='zoom-buttons'>");
         _html.AppendLine("            <button id='zoom-out' class='zoom-button'>−</button>");

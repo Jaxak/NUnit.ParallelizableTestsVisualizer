@@ -171,7 +171,7 @@ internal static class HtmlConstants
         zoomInput.addEventListener('change', (e) => {
             let zoom = parseFloat(e.target.value);
             if (isNaN(zoom) || zoom < 0.1) zoom = 0.1;
-            if (zoom > 20) zoom = 20;
+            if (zoom > 50) zoom = 50;
             applyZoom(zoom);
         });
 
@@ -188,7 +188,7 @@ internal static class HtmlConstants
         });
 
         document.getElementById('zoom-in').addEventListener('click', () => {
-            const newZoom = Math.min(20, currentZoom * 1.5);
+            const newZoom = Math.min(50, currentZoom * 1.5);
             applyZoom(newZoom);
         });
 
@@ -203,7 +203,7 @@ internal static class HtmlConstants
             if (e.ctrlKey) {
                 e.preventDefault();
                 const delta = e.deltaY > 0 ? 0.9 : 1.1;
-                const newZoom = Math.max(0.1, Math.min(20, currentZoom * delta));
+                const newZoom = Math.max(0.1, Math.min(50, currentZoom * delta));
                 applyZoom(newZoom);
             }
         }, { passive: false });
