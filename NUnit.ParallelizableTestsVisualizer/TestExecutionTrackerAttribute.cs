@@ -86,12 +86,32 @@ public class TestExecutionTrackerAttribute : Attribute, ITestAction
             return;
 
         var testName = test.FullName;
+        var workerId = TestContext.CurrentContext.WorkerId ?? "0";
+        var now = DateTime.Now;
+        var status = TestContext.CurrentContext.Result.Outcome.Status.ToString();
         
         if (TestExecutionStorage.TryGetPendingExecution(testName, out var info))
         {
-            info.EndTime = DateTime.Now;
-            info.Status = TestContext.CurrentContext.Result.Outcome.Status.ToString();
+            // Тест был найден в pending executions - обновляем его данные
+            info.EndTime = now;
+            info.Status = status;
             TestExecutionStorage.CompletePendingExecution(testName);
+        }
+        else
+        {
+            // Тест НЕ был найден в pending executions
+            // Это означает, что BeforeTest не был вызван (например, для игнорируемых тестов)
+            // Создаем новую запись с нулевой длительностью
+            var newInfo = new TestExecutionInfo
+            {
+                TestName = testName,
+                WorkerId = workerId,
+                StartTime = now,
+                EndTime = now,
+                Status = status
+            };
+            
+            TestExecutionStorage.AddExecution(newInfo);
         }
     }
 

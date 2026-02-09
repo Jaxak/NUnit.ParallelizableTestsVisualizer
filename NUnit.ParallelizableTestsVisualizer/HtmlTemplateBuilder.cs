@@ -210,16 +210,10 @@ internal class HtmlTemplateBuilder
             .OrderBy(t => t.TestName)
             .ToList();
 
-        var skippedTests = executions
-            .Where(t => t.Status.Equals("Skipped", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(t => t.TestName)
-            .ToList();
-
         _html.AppendLine("    <div class='test-lists-container'>");
         
         AddLongRunningTestsList(longRunningTests);
         AddFailedTestsList(failedTests);
-        AddSkippedTestsList(skippedTests);
         
         _html.AppendLine("    </div>");
     }
@@ -279,36 +273,6 @@ internal class HtmlTemplateBuilder
         else
         {
             _html.AppendLine("            <div class='empty-message'>Упавших тестов не обнаружено</div>");
-        }
-        
-        _html.AppendLine("        </div>");
-    }
-
-    /// <summary>
-    /// Добавляет блок со списком пропущенных тестов.
-    /// </summary>
-    private void AddSkippedTestsList(List<TestExecutionInfo> tests)
-    {
-        _html.AppendLine("        <div class='test-list-block skipped'>");
-        _html.AppendLine($"            <h2>⏭️ Пропущенные тесты ({tests.Count})</h2>");
-        
-        if (tests.Any())
-        {
-            _html.AppendLine("            <ul class='test-list'>");
-            foreach (var test in tests)
-            {
-                var durationMs = test.Duration.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture);
-                _html.AppendLine("                <li class='skipped'>");
-                _html.AppendLine($"                    <span class='test-name'>{EscapeHtml(test.TestName)}</span>");
-                _html.AppendLine($"                    <span class='test-duration'>({durationMs} мс)</span>");
-                _html.AppendLine($"                    <span class='test-worker'>Worker: {EscapeHtml(test.WorkerId)}</span>");
-                _html.AppendLine("                </li>");
-            }
-            _html.AppendLine("            </ul>");
-        }
-        else
-        {
-            _html.AppendLine("            <div class='empty-message'>Пропущенных тестов не обнаружено</div>");
         }
         
         _html.AppendLine("        </div>");
