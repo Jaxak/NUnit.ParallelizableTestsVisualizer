@@ -37,9 +37,9 @@ internal static class HtmlConstants
         body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
         h1 { color: #333; }
         .timeline-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto; }
-        .timeline { position: relative; margin-top: 20px; min-width: max-content; }
+        .timeline { position: relative; margin-top: 20px; min-width: max-content; margin-left: 70px; }
         .worker-row { position: relative; height: 60px; margin-bottom: 10px; border-left: 2px solid #333; }
-        .worker-label { position: absolute; left: -40px; top: 20px; width: 30px; text-align: right; font-weight: bold; color: #666; }
+        .worker-label { position: absolute; left: -60px; top: 20px; width: 50px; text-align: right; font-weight: bold; color: #666; }
         .test-block { position: absolute; height: 40px; top: 10px; border-radius: 4px; cursor: pointer; transition: transform 0.2s; display: flex; align-items: center; padding: 0 8px; font-size: 12px; color: white; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border: 1px solid black; box-sizing: border-box; }
         .test-block:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 10; }
         .test-block.passed { background: #4CAF50; }
@@ -64,6 +64,21 @@ internal static class HtmlConstants
         .zoom-button { padding: 6px 12px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
         .zoom-button:hover { background: #1565c0; }
         .zoom-button:active { background: #0d47a1; }
+        .test-lists-container { margin-top: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
+        .test-list-block { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-list-block h2 { margin-top: 0; margin-bottom: 15px; font-size: 18px; color: #333; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .test-list-block.long-running h2 { border-color: #FFD700; color: #F57C00; }
+        .test-list-block.failed h2 { border-color: #f44336; color: #f44336; }
+        .test-list-block.skipped h2 { border-color: #FF9800; color: #FF9800; }
+        .test-list { list-style: none; padding: 0; margin: 0; }
+        .test-list li { padding: 10px; margin-bottom: 8px; background: #f9f9f9; border-radius: 4px; border-left: 4px solid #ddd; font-size: 14px; word-break: break-word; }
+        .test-list li.long-running { border-left-color: #FFD700; background: #FFFDE7; }
+        .test-list li.failed { border-left-color: #f44336; background: #FFEBEE; }
+        .test-list li.skipped { border-left-color: #FF9800; background: #FFF3E0; }
+        .test-list .test-name { font-weight: bold; color: #333; }
+        .test-list .test-duration { color: #666; font-size: 12px; margin-left: 10px; }
+        .test-list .test-worker { color: #888; font-size: 12px; margin-left: 10px; }
+        .test-list .empty-message { color: #999; font-style: italic; text-align: center; padding: 20px; }
     ";
 
     /// <summary>

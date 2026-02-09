@@ -10,16 +10,18 @@ internal class HtmlTemplateBuilder
 {
     private readonly StringBuilder _html = new();
     private readonly TimelineCalculator _calculator;
+    private readonly double _longRunningTestThresholdSeconds;
 
-    public HtmlTemplateBuilder(TimelineCalculator calculator)
+    public HtmlTemplateBuilder(TimelineCalculator calculator, double longRunningTestThresholdSeconds = HtmlConstants.LongRunningTestThresholdSeconds)
     {
         _calculator = calculator;
+        _longRunningTestThresholdSeconds = longRunningTestThresholdSeconds;
     }
 
     /// <summary>
     /// Начинает построение HTML документа.
     /// </summary>
-    public void BeginDocument(string title)
+    public void BeginDocument(string title, string? assemblyName = null)
     {
         _html.AppendLine("<!DOCTYPE html>");
         _html.AppendLine("<html>");
@@ -31,7 +33,15 @@ internal class HtmlTemplateBuilder
         _html.AppendLine("    </style>");
         _html.AppendLine("</head>");
         _html.AppendLine("<body>");
-        _html.AppendLine($"    <h1>{EscapeHtml(title)}</h1>");
+        
+        if (!string.IsNullOrWhiteSpace(assemblyName))
+        {
+            _html.AppendLine($"    <h1>{EscapeHtml(title)}<br><span style='color: #666; font-weight: normal; font-size: 0.7em;'>для {EscapeHtml(assemblyName)}</span></h1>");
+        }
+        else
+        {
+            _html.AppendLine($"    <h1>{EscapeHtml(title)}</h1>");
+        }
     }
 
     /// <summary>
@@ -130,6 +140,8 @@ internal class HtmlTemplateBuilder
 
         var statusClass = GetStatusClass(test);
         var testShortName = GetShortTestName(test.TestName);
+        var statusEmoji = GetStatusEmoji(test);
+        var emojiSpan = string.IsNullOrEmpty(statusEmoji) ? "" : $"<span style='margin-right: 4px;'>{statusEmoji}</span>";
 
         _html.AppendLine($"                <div class='test-block {statusClass}' ");
         _html.AppendLine($"                     style='left: {leftPx.ToString("F2", CultureInfo.InvariantCulture)}px; width: {widthPx.ToString("F2", CultureInfo.InvariantCulture)}px;'");
@@ -141,21 +153,37 @@ internal class HtmlTemplateBuilder
         _html.AppendLine($"                     data-end='{test.EndTime:HH:mm:ss.fff}'");
         _html.AppendLine($"                     data-duration='{test.Duration.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)}'");
         _html.AppendLine($"                     data-status='{test.Status}'>");
-        _html.AppendLine($"                    {EscapeHtml(testShortName)}");
+        _html.AppendLine($"                    {emojiSpan}{EscapeHtml(testShortName)}");
         _html.AppendLine("                </div>");
     }
 
     /// <summary>
     /// Определяет CSS класс для статуса теста.
     /// </summary>
-    private static string GetStatusClass(TestExecutionInfo test)
+    private string GetStatusClass(TestExecutionInfo test)
     {
-        if (test.Duration.TotalSeconds > HtmlConstants.LongRunningTestThresholdSeconds)
+        if (test.Duration.TotalSeconds > _longRunningTestThresholdSeconds)
         {
             return "long-running";
         }
         
         return test.Status.ToLower();
+    }
+
+    /// <summary>
+    /// Возвращает эмодзи для статуса теста.
+    /// </summary>
+    private static string GetStatusEmoji(TestExecutionInfo test)
+    {
+        // Эмодзи на основе статуса теста
+        return test.Status.ToLower() switch
+        {
+            "passed" => "✅",
+            "failed" => "❌",
+            "skipped" => "⏭️",
+            "inconclusive" => "❓",
+            _ => string.Empty
+        };
     }
 
     /// <summary>
@@ -165,6 +193,125 @@ internal class HtmlTemplateBuilder
     {
         _html.AppendLine("        </div>");
         _html.AppendLine("    </div>");
+    }
+
+    /// <summary>
+    /// Добавляет блоки со списками тестов.
+    /// </summary>
+    public void AddTestListsSection(List<TestExecutionInfo> executions)
+    {
+        var longRunningTests = executions
+            .Where(t => t.Duration.TotalSeconds > _longRunningTestThresholdSeconds)
+            .OrderByDescending(t => t.Duration)
+            .ToList();
+
+        var failedTests = executions
+            .Where(t => t.Status.Equals("Failed", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => t.TestName)
+            .ToList();
+
+        var skippedTests = executions
+            .Where(t => t.Status.Equals("Skipped", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => t.TestName)
+            .ToList();
+
+        _html.AppendLine("    <div class='test-lists-container'>");
+        
+        AddLongRunningTestsList(longRunningTests);
+        AddFailedTestsList(failedTests);
+        AddSkippedTestsList(skippedTests);
+        
+        _html.AppendLine("    </div>");
+    }
+
+    /// <summary>
+    /// Добавляет блок со списком долгих тестов.
+    /// </summary>
+    private void AddLongRunningTestsList(List<TestExecutionInfo> tests)
+    {
+        _html.AppendLine("        <div class='test-list-block long-running'>");
+        _html.AppendLine($"            <h2>⚠️ Долгие тесты ({tests.Count})</h2>");
+        
+        if (tests.Any())
+        {
+            _html.AppendLine("            <ul class='test-list'>");
+            foreach (var test in tests)
+            {
+                var durationSeconds = test.Duration.TotalSeconds.ToString("F2", CultureInfo.InvariantCulture);
+                _html.AppendLine("                <li class='long-running'>");
+                _html.AppendLine($"                    <span class='test-name'>{EscapeHtml(test.TestName)}</span>");
+                _html.AppendLine($"                    <span class='test-duration'>({durationSeconds} сек)</span>");
+                _html.AppendLine($"                    <span class='test-worker'>Worker: {EscapeHtml(test.WorkerId)}</span>");
+                _html.AppendLine("                </li>");
+            }
+            _html.AppendLine("            </ul>");
+        }
+        else
+        {
+            _html.AppendLine("            <div class='empty-message'>Долгих тестов не обнаружено</div>");
+        }
+        
+        _html.AppendLine("        </div>");
+    }
+
+    /// <summary>
+    /// Добавляет блок со списком упавших тестов.
+    /// </summary>
+    private void AddFailedTestsList(List<TestExecutionInfo> tests)
+    {
+        _html.AppendLine("        <div class='test-list-block failed'>");
+        _html.AppendLine($"            <h2>❌ Упавшие тесты ({tests.Count})</h2>");
+        
+        if (tests.Any())
+        {
+            _html.AppendLine("            <ul class='test-list'>");
+            foreach (var test in tests)
+            {
+                var durationMs = test.Duration.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture);
+                _html.AppendLine("                <li class='failed'>");
+                _html.AppendLine($"                    <span class='test-name'>{EscapeHtml(test.TestName)}</span>");
+                _html.AppendLine($"                    <span class='test-duration'>({durationMs} мс)</span>");
+                _html.AppendLine($"                    <span class='test-worker'>Worker: {EscapeHtml(test.WorkerId)}</span>");
+                _html.AppendLine("                </li>");
+            }
+            _html.AppendLine("            </ul>");
+        }
+        else
+        {
+            _html.AppendLine("            <div class='empty-message'>Упавших тестов не обнаружено</div>");
+        }
+        
+        _html.AppendLine("        </div>");
+    }
+
+    /// <summary>
+    /// Добавляет блок со списком пропущенных тестов.
+    /// </summary>
+    private void AddSkippedTestsList(List<TestExecutionInfo> tests)
+    {
+        _html.AppendLine("        <div class='test-list-block skipped'>");
+        _html.AppendLine($"            <h2>⏭️ Пропущенные тесты ({tests.Count})</h2>");
+        
+        if (tests.Any())
+        {
+            _html.AppendLine("            <ul class='test-list'>");
+            foreach (var test in tests)
+            {
+                var durationMs = test.Duration.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture);
+                _html.AppendLine("                <li class='skipped'>");
+                _html.AppendLine($"                    <span class='test-name'>{EscapeHtml(test.TestName)}</span>");
+                _html.AppendLine($"                    <span class='test-duration'>({durationMs} мс)</span>");
+                _html.AppendLine($"                    <span class='test-worker'>Worker: {EscapeHtml(test.WorkerId)}</span>");
+                _html.AppendLine("                </li>");
+            }
+            _html.AppendLine("            </ul>");
+        }
+        else
+        {
+            _html.AppendLine("            <div class='empty-message'>Пропущенных тестов не обнаружено</div>");
+        }
+        
+        _html.AppendLine("        </div>");
     }
 
     /// <summary>

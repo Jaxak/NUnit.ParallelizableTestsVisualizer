@@ -10,7 +10,9 @@ public static class HtmlExporter
     /// </summary>
     /// <param name="executions">Коллекция информации о выполнении тестов.</param>
     /// <param name="filePath">Путь к файлу для сохранения HTML.</param>
-    public static void Export(IEnumerable<TestExecutionInfo> executions, string filePath)
+    /// <param name="assemblyName">Название сборки с тестами (опционально).</param>
+    /// <param name="longRunningTestThresholdSeconds">Порог длительности теста в секундах для пометки как "долгий" (по умолчанию 120).</param>
+    public static void Export(IEnumerable<TestExecutionInfo> executions, string filePath, string? assemblyName = null, double longRunningTestThresholdSeconds = HtmlConstants.LongRunningTestThresholdSeconds)
     {
         var executionList = executions.OrderBy(e => e.StartTime).ToList();
 
@@ -21,9 +23,9 @@ public static class HtmlExporter
         }
 
         var calculator = new TimelineCalculator(executionList);
-        var builder = new HtmlTemplateBuilder(calculator);
+        var builder = new HtmlTemplateBuilder(calculator, longRunningTestThresholdSeconds);
 
-        BuildHtmlDocument(builder, executionList, calculator);
+        BuildHtmlDocument(builder, executionList, calculator, assemblyName);
 
         File.WriteAllText(filePath, builder.Build());
     }
@@ -34,9 +36,10 @@ public static class HtmlExporter
     private static void BuildHtmlDocument(
         HtmlTemplateBuilder builder, 
         List<TestExecutionInfo> executions, 
-        TimelineCalculator calculator)
+        TimelineCalculator calculator,
+        string? assemblyName)
     {
-        builder.BeginDocument("Визуализация параллельного выполнения тестов");
+        builder.BeginDocument("Визуализация параллельного выполнения тестов", assemblyName);
 
         var workers = executions.Select(e => e.WorkerId).Distinct().OrderBy(w => w).ToList();
         var totalDurationSeconds = calculator.TotalDurationMs / 1000;
@@ -56,6 +59,9 @@ public static class HtmlExporter
         AddWorkerRows(builder, executions, workers);
 
         builder.EndTimeline();
+        
+        builder.AddTestListsSection(executions);
+        
         builder.AddTooltipAndScript();
         builder.EndDocument();
     }
