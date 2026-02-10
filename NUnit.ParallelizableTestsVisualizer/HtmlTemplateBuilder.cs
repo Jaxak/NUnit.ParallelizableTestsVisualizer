@@ -106,8 +106,10 @@ internal class HtmlTemplateBuilder
     /// </summary>
     public void AddWorkerRow(int rowNumber, string workerId, List<TestExecutionInfo> tests)
     {
+        var workerNumber = ExtractWorkerNumber(workerId);
+        
         _html.AppendLine($"            <div class='worker-row' style='width: {_calculator.TimelineWidthPx}px;'>");
-        _html.AppendLine($"                <div class='worker-label'>{rowNumber}</div>");
+        _html.AppendLine($"                <div class='worker-label'>{workerNumber}</div>");
 
         foreach (var test in tests)
         {
@@ -115,6 +117,23 @@ internal class HtmlTemplateBuilder
         }
 
         _html.AppendLine("            </div>");
+    }
+
+    /// <summary>
+    /// Извлекает номер воркера из его идентификатора (часть после символа #).
+    /// </summary>
+    private static int ExtractWorkerNumber(string workerId)
+    {
+        var hashIndex = workerId.LastIndexOf('#');
+        if (hashIndex >= 0 && hashIndex < workerId.Length - 1)
+        {
+            var numberPart = workerId.Substring(hashIndex + 1);
+            if (int.TryParse(numberPart, out int workerNumber))
+            {
+                return workerNumber;
+            }
+        }
+        return 0; // Если не удалось извлечь номер, вернуть 0
     }
 
     /// <summary>

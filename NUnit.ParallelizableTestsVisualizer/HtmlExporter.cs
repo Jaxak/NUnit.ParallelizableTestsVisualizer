@@ -41,7 +41,12 @@ public static class HtmlExporter
     {
         builder.BeginDocument("Визуализация параллельного выполнения тестов", assemblyName);
 
-        var workers = executions.Select(e => e.WorkerId).Distinct().OrderBy(w => w).ToList();
+        var workers = executions
+            .Select(e => e.WorkerId)
+            .Distinct()
+            .OrderBy(w => ExtractWorkerNumber(w))
+            .ToList();
+        
         var totalDurationSeconds = calculator.TotalDurationMs / 1000;
 
         builder.AddStatistics(
@@ -85,5 +90,22 @@ public static class HtmlExporter
             builder.AddWorkerRow(rowNumber, workerId, workerTests);
             rowNumber++;
         }
+    }
+
+    /// <summary>
+    /// Извлекает номер воркера из его идентификатора (часть после символа #).
+    /// </summary>
+    private static int ExtractWorkerNumber(string workerId)
+    {
+        var hashIndex = workerId.LastIndexOf('#');
+        if (hashIndex >= 0 && hashIndex < workerId.Length - 1)
+        {
+            var numberPart = workerId.Substring(hashIndex + 1);
+            if (int.TryParse(numberPart, out int workerNumber))
+            {
+                return workerNumber;
+            }
+        }
+        return int.MaxValue; // Если не удалось извлечь номер, поместить в конец
     }
 }
