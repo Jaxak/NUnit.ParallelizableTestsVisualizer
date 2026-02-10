@@ -31,6 +31,17 @@ internal static class HtmlConstants
     public const double TestGapThresholdMs = 0.1;
 
     /// <summary>
+    /// Минимальная ширина блока в пикселях (при максимальном масштабе) для отображения текста названия теста.
+    /// Если блок меньше этого размера даже при максимальном масштабе, текст не отображается.
+    /// </summary>
+    public const double MinWidthForTextDisplay = 30;
+    
+    /// <summary>
+    /// Максимальный масштаб, используемый для расчёта отображения текста.
+    /// </summary>
+    public const double MaxZoom = 100;
+
+    /// <summary>
     /// CSS стили для HTML страницы.
     /// </summary>
     public static string GetCssStyles() => @"
@@ -40,7 +51,7 @@ internal static class HtmlConstants
         .timeline { position: relative; margin-top: 20px; min-width: max-content; margin-left: 70px; }
         .worker-row { position: relative; height: 60px; margin-bottom: 10px; border-left: 2px solid #333; }
         .worker-label { position: absolute; left: -60px; top: 20px; width: 50px; text-align: right; font-weight: bold; color: #666; }
-        .test-block { position: absolute; height: 40px; top: 10px; border-radius: 4px; cursor: pointer; transition: transform 0.2s; display: flex; align-items: center; padding: 0 8px; font-size: 12px; color: white; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border: 1px solid black; box-sizing: border-box; }
+        .test-block { position: absolute; height: 40px; top: 10px; border-radius: 4px; cursor: pointer; transition: transform 0.2s; padding: 0 8px; font-size: 12px; color: white; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border: 1px solid black; box-sizing: border-box; line-height: 40px; max-width: 100%;}
         .test-block:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 10; }
         .test-block.passed { background: #4CAF50; }
         .test-block.failed { background: #f44336; }
@@ -155,9 +166,9 @@ internal static class HtmlConstants
             // Обновляем позиции и размеры блоков тестов
             testBlocks.forEach(block => {
                 const originalLeft = parseFloat(block.dataset.originalLeft);
-                const originalWidth = parseFloat(block.dataset.originalWidth);
+                const cleanWidth = parseFloat(block.dataset.cleanWidth);
                 block.style.left = (originalLeft * zoom) + 'px';
-                block.style.width = (originalWidth * zoom) + 'px';
+                block.style.width = Math.max(2, cleanWidth * zoom) + 'px';
             });
         }
 
@@ -171,7 +182,7 @@ internal static class HtmlConstants
         zoomInput.addEventListener('change', (e) => {
             let zoom = parseFloat(e.target.value);
             if (isNaN(zoom) || zoom < 0.1) zoom = 0.1;
-            if (zoom > 50) zoom = 50;
+            if (zoom > 100) zoom = 100;
             applyZoom(zoom);
         });
 
@@ -188,7 +199,7 @@ internal static class HtmlConstants
         });
 
         document.getElementById('zoom-in').addEventListener('click', () => {
-            const newZoom = Math.min(50, currentZoom * 1.5);
+            const newZoom = Math.min(100, currentZoom * 1.5);
             applyZoom(newZoom);
         });
 
@@ -203,7 +214,7 @@ internal static class HtmlConstants
             if (e.ctrlKey) {
                 e.preventDefault();
                 const delta = e.deltaY > 0 ? 0.9 : 1.1;
-                const newZoom = Math.max(0.1, Math.min(50, currentZoom * delta));
+                const newZoom = Math.max(0.1, Math.min(100, currentZoom * delta));
                 applyZoom(newZoom);
             }
         }, { passive: false });

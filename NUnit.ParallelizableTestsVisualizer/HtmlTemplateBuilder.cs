@@ -65,8 +65,8 @@ internal class HtmlTemplateBuilder
     {
         _html.AppendLine("    <div class='zoom-control'>");
         _html.AppendLine("        <label for='zoom-slider'>Масштаб:</label>");
-        _html.AppendLine("        <input type='range' id='zoom-slider' class='zoom-slider' min='0.1' max='50' step='0.1' value='1' />");
-        _html.AppendLine("        <input type='number' id='zoom-input' class='zoom-input' min='0.1' max='50' step='0.1' value='1.00' />");
+        _html.AppendLine("        <input type='range' id='zoom-slider' class='zoom-slider' min='0.1' max='100' step='0.1' value='1' />");
+        _html.AppendLine("        <input type='number' id='zoom-input' class='zoom-input' min='0.1' max='100' step='0.1' value='1.00' />");
         _html.AppendLine("        <span style='color: #666;'>×</span>");
         _html.AppendLine("        <div class='zoom-buttons'>");
         _html.AppendLine("            <button id='zoom-out' class='zoom-button'>−</button>");
@@ -109,9 +109,9 @@ internal class HtmlTemplateBuilder
         _html.AppendLine($"            <div class='worker-row' style='width: {_calculator.TimelineWidthPx}px;'>");
         _html.AppendLine($"                <div class='worker-label'>{rowNumber}</div>");
 
-        for (int i = 0; i < tests.Count; i++)
+        foreach (var test in tests)
         {
-            AddTestBlock(tests[i], i > 0 ? tests[i - 1] : null);
+            AddTestBlock(test);
         }
 
         _html.AppendLine("            </div>");
@@ -120,40 +120,36 @@ internal class HtmlTemplateBuilder
     /// <summary>
     /// Добавляет блок теста.
     /// </summary>
-    private void AddTestBlock(TestExecutionInfo test, TestExecutionInfo? previousTest)
+    private void AddTestBlock(TestExecutionInfo test)
     {
         var leftPx = _calculator.GetPositionPx(test.StartTime);
-        var widthPx = _calculator.GetWidthPx(test.Duration);
-
-        // Добавляем отступ, если тесты идут вплотную
-        if (previousTest != null)
-        {
-            var prevEndOffset = _calculator.GetPositionPx(previousTest.EndTime);
-            var currentStartOffset = leftPx;
-
-            if (Math.Abs(currentStartOffset - prevEndOffset) < HtmlConstants.TestGapThresholdMs)
-            {
-                leftPx += HtmlConstants.MinTestGapPixels;
-                widthPx = Math.Max(HtmlConstants.MinTestBlockWidth, widthPx - HtmlConstants.MinTestGapPixels);
-            }
-        }
+        var cleanWidthPx = test.Duration.TotalMilliseconds * HtmlConstants.PixelsPerMillisecond; // Чистая ширина без минимума
+        var widthPx = _calculator.GetWidthPx(test.Duration); // С учетом минимума
 
         var statusClass = GetStatusClass(test);
         var testShortName = GetShortTestName(test.TestName);
         var statusEmoji = GetStatusEmoji(test);
-        var emojiSpan = string.IsNullOrEmpty(statusEmoji) ? "" : $"<span style='margin-right: 4px;'>{statusEmoji}</span>";
+        
+        // Определяем, нужно ли отображать текст внутри блока
+        // Текст показываем только если при максимальном масштабе блок будет достаточно широким
+        var shouldDisplayText = (widthPx * HtmlConstants.MaxZoom) >= HtmlConstants.MinWidthForTextDisplay;
+        
+        var blockContent = shouldDisplayText
+            ? (string.IsNullOrEmpty(statusEmoji) ? EscapeHtml(testShortName) : $"<span style='margin-right: 4px;'>{statusEmoji}</span>{EscapeHtml(testShortName)}")
+            : string.Empty;
 
         _html.AppendLine($"                <div class='test-block {statusClass}' ");
         _html.AppendLine($"                     style='left: {leftPx.ToString("F2", CultureInfo.InvariantCulture)}px; width: {widthPx.ToString("F2", CultureInfo.InvariantCulture)}px;'");
         _html.AppendLine($"                     data-original-left='{leftPx.ToString("F2", CultureInfo.InvariantCulture)}'");
         _html.AppendLine($"                     data-original-width='{widthPx.ToString("F2", CultureInfo.InvariantCulture)}'");
+        _html.AppendLine($"                     data-clean-width='{cleanWidthPx.ToString("F2", CultureInfo.InvariantCulture)}'");
         _html.AppendLine($"                     data-test-name='{EscapeHtml(test.TestName)}'");
         _html.AppendLine($"                     data-worker='{test.WorkerId}'");
         _html.AppendLine($"                     data-start='{test.StartTime:HH:mm:ss.fff}'");
         _html.AppendLine($"                     data-end='{test.EndTime:HH:mm:ss.fff}'");
         _html.AppendLine($"                     data-duration='{test.Duration.TotalMilliseconds.ToString("F2", CultureInfo.InvariantCulture)}'");
         _html.AppendLine($"                     data-status='{test.Status}'>");
-        _html.AppendLine($"                    {emojiSpan}{EscapeHtml(testShortName)}");
+        _html.AppendLine($"                    {blockContent}");
         _html.AppendLine("                </div>");
     }
 
